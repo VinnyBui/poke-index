@@ -1,74 +1,91 @@
 import React, { useState, useEffect } from 'react';
-import PokemonList from './PokemonList';
 import axios from "axios";
-import Pagination from './Pagination';
+import { getAllPokemon, getPokemon} from './services/Pokemon';
+import Card from './components/Card'
+import Navbar from './components/Navbar'
 
 function App() {
-  const [pokemon, setPokemon] = useState([]);
+  const [pokemonData, setPokemonData] = useState([]);
   const [pokemonName, setPokemonName] = useState("");
+  const [searchPokemonData, setsearchPokemonData] = useState({});
+  const [pokemonChosen, setPokemonChosen] = useState(false)
   const [currentPageUrl, setcurrentPageUrl] = useState("https://pokeapi.co/api/v2/pokemon");
-  const [nextPageUrl, setnextPageUrl] = useState();
-  const [prevPageUrl, setprevPageUrl] = useState();
+  const [nextPageUrl, setnextPageUrl] = useState('');
+  const [prevPageUrl, setprevPageUrl] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const searchPokemon = () => {
+  const searchPokemon = async () => {
+    setPokemonChosen(false)
     axios.get(`https://pokeapi.co/api/v2/pokemon/${pokemonName}`).then(
       (response)=> {
-        console.log(response);
+        setsearchPokemonData(response.data);
+        if(!pokemonName==""){
+          setPokemonChosen(true)
+        }
       }
     );
+
   };
 
   //useEffects makes it so axios will fetch the data and rerender once, making it more efficient
   //Every time currentPageUrl changes, rerender the data
   useEffect(() => {
-    setLoading(true)
-    let cancel
-    axios.get(currentPageUrl, {
-      cancelToken: new axios.CancelToken(c => cancel = c)
-    }).then(res => {
-      setLoading(false)
-      setnextPageUrl(res.data.next)
-      setprevPageUrl(res.data.previous)
-      setPokemon(res.data.results.map(p => p.name))
+    async function fetchData() {
+      let response = await getAllPokemon(currentPageUrl);
+      setnextPageUrl(response.next);
+      setprevPageUrl(response.previous);
+      await loadingPokemon(response.results);
+      setLoading(false);
+    }
+    fetchData();
+  }, []);
+
+  const next = async () => {
+    setLoading(true);
+    let data = await getAllPokemon(nextPageUrl)
+    await loadingPokemon(data.results)
+    setnextPageUrl(data.next);
+    setprevPageUrl(data.previous);
+    setLoading(false);
+  }
+
+  const prev = async () => {
+    if(!prevPageUrl) return;
+    setLoading(true);
+    let data = await getAllPokemon(prevPageUrl)
+    await loadingPokemon(data.results)
+    setnextPageUrl(data.next);
+    setprevPageUrl(data.previous);
+    setLoading(false);
+  }
+
+  const loadingPokemon = async data => {
+    let _pokemonData = await Promise.all(
+      data.map(async pokemon => {
+        let pokemonRecord = await getPokemon(pokemon.url);
+        return pokemonRecord;
     })
+  );
+    setPokemonData(_pokemonData);
+  };
 
-    //cancels old request if the user makes a new one
-    return () => cancel()
-  }, [currentPageUrl]);
-
-  function gotoNextPage() {
-    setcurrentPageUrl(nextPageUrl)
-  }
-
-  function gotoPrevPage() {
-    setcurrentPageUrl(prevPageUrl)
-  }
-
-  if(loading) return "Loading..."
 
   return (
-    <>
-      <div className="flex flex-col items-center ">
-        <header className=" p-14 w-full">
-          <h1 className="font-bold text-5xl text-center">Pokedex</h1>
-        </header>
-        <div className='w-2/3 flex justify-center gap-2'>
-          <input
-            className='input input-bordered w-full max-w-xs'
-            type="text"
-            placeholder="Type here"
-            onChange={(event) => {
-              setPokemonName(event.target.value);
-            }}
-          />
-          <button className="btn" onClick={searchPokemon}>Search Pokemon</button>
-        </div>
-      </div>
-    
-      {/* <PokemonList pokemon={pokemon} /> */}
-      {/* <Pagination gotoNextPage = {nextPageUrl ? gotoNextPage : null} gotoPrevPage = {prevPageUrl ? gotoPrevPage : null}/> */}
-    </>
+    <div>
+      {loading ? (
+        <h1>Loading...</h1>
+        ) : (
+          <>
+            <Navbar setPokemonName={setPokemonName} searchPokemon={searchPokemon} gotoNextPage = {next} gotoPrevPage = {prev}></Navbar>
+            <div className='flex flex-wrap gap-2 mt-24 justify-center'>
+              {!pokemonChosen ? (pokemonData.map((pokemon, i) => {
+                return <Card key={i} pokemon={pokemon}/>
+              })) : (<Card pokemon={searchPokemonData}/>)}
+            </div>
+          </>
+        )
+      }
+    </div>
   );
 }
 
